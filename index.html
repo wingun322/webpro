@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>암호화폐 가격 정보</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+<header class="header">
+  <h1>암호화폐 가격 정보</h1>
+  <nav>
+    <ul class="nav-menu">
+      <li><a href="#crypto-info-section" class="active">가격 정보</a></li>
+      <li><a href="#news-section">뉴스</a></li>
+    </ul>
+  </nav>
+</header>
+
+<div class="container">
+  <section id="crypto-info-section">
+    <h2>현재 암호화폐 가격</h2>
+    <ul id="crypto-list"></ul>
+  </section>
+
+  <section id="news-section" style="display: none;">
+    <h2>암호화폐 관련 뉴스</h2>
+    <div id="news-list">
+      <!-- 뉴스 내용이 여기에 추가됩니다 -->
+    </div>
+  </section>
+</div>
+
+  <script src="script.js"></script>
+</body>
+</html>
