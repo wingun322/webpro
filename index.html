@@ -6,6 +6,7 @@
   <title>암호화폐 가격 정보</title>
   <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="script.js"></script>
 </head>
 
 <body>
@@ -22,17 +23,25 @@
 <div class="container">
   <section id="crypto-info-section">
     <h2>현재 암호화폐 가격</h2>
+    <div class="sort-options">
+      <button id="sort-by-name" class="sort-btn">이름순</button>
+      <button id="sort-by-price" class="sort-btn">가격순</button>
+      <button id="sort-by-change-amount" class="sort-btn">변화액</button>
+      <button id="sort-by-change-rate" class="sort-btn">변화율</button>
+    </div>
+    <div class="change-type-options">
+      <button id="toggle-change-type" class="sort-btn">변화액</button>
+    </div>
     <ul id="crypto-list"></ul>
   </section>
 
   <section id="news-section" style="display: none;">
     <h2>암호화폐 관련 뉴스</h2>
     <div id="news-list">
-      <!-- 뉴스 내용이 여기에 추가됩니다 -->
     </div>
   </section>
 </div>
 
-  <script src="script.js"></script>
+<script src="script.js"></script>
 </body>
 </html>
