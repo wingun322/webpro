@@ -213,3 +213,18 @@ h2 {
 .change-type-options button:hover {
   background-color: #808080;
 }
+
+.crypto-item {
+  cursor: pointer;
+  padding: 8px;
+  border-bottom: 1px solid #ddd;
+}
+
+.crypto-item:hover {
+  background-color: #f5f5f5;
+}
+
+.chart-container {
+  margin: 20px auto;
+  max-width: 80%;
+}

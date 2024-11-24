@@ -10,6 +10,13 @@ document.addEventListener("DOMContentLoaded", () => {
   let showChangePrice = true; // 변화액(true) 또는 변화율(false) 표시 여부
   let previousPrices = {}; // 가격 변화 추적 객체
   let cryptoData = []; // 암호화폐 데이터를 저장할 변수
+  const apiBaseUrl = "https://api.bithumb.com/v1/candles/days";
+  const backToListBtn = document.getElementById('back-to-list-btn');
+  const cryptoInfoSection = document.getElementById("crypto-info-section");
+  const chartSection = document.getElementById("chart-section");
+  const chartTitle = document.getElementById("chart-title");
+  const ctx = document.getElementById("priceChart").getContext("2d");
+  let priceChart;
 
   // 변화율/변화액 전환 버튼 클릭 이벤트
   toggleChangeTypeBtn.addEventListener("click", () => {
@@ -17,6 +24,96 @@ document.addEventListener("DOMContentLoaded", () => {
     toggleChangeTypeBtn.textContent = showChangePrice ? '변화액' : '변화율';
     renderCryptoList(); // 리스트 다시 렌더링
   });
+
+  // 뒤로 가기 버튼 클릭 시 암호화폐 리스트로 돌아가기
+  backToListBtn.addEventListener("click", () => {
+    chartSection.style.display = 'none';  // 차트 숨기기
+    cryptoInfoSection.style.display = 'block';  // 암호화폐 리스트 보이기
+  });
+
+  // 캔들 데이터 차트 생성/업데이트
+  function updatePriceChart(candleData, title) {
+    const labels = candleData.map(item => item.candle_date_time_kst.split('T')[0]);
+    const openPrices = candleData.map(item => item.opening_price);
+    const highPrices = candleData.map(item => item.high_price);
+    const lowPrices = candleData.map(item => item.low_price);
+    const closePrices = candleData.map(item => item.trade_price);
+
+    // 차트가 이미 생성된 경우 업데이트
+    if (priceChart) {
+      priceChart.data.labels = labels;
+      priceChart.data.datasets[0].data = openPrices;
+      priceChart.data.datasets[1].data = highPrices;
+      priceChart.data.datasets[2].data = lowPrices;
+      priceChart.data.datasets[3].data = closePrices;
+      priceChart.update();
+    } else {
+      // 새 차트 생성
+      priceChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: '시가', data: openPrices, borderColor: 'orange', fill: false },
+            { label: '고가', data: highPrices, borderColor: 'green', fill: false },
+            { label: '저가', data: lowPrices, borderColor: 'blue', fill: false },
+            { label: '종가', data: closePrices, borderColor: 'red', fill: false },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: 'top' },
+            title: { display: true, text: title },
+          },
+          scales: {
+            x: {
+              title: { display: true, text: '날짜' },
+              reverse: true,  // X축 반전
+            },
+            y: {
+              title: { display: true, text: '가격 (₩)' },
+              position: 'right',
+            },
+          },
+        },
+      });
+    }
+  }
+
+  async function fetchCryptoHistory(market, koreanName) {
+    const apiUrl = `https://api.bithumb.com/v1/candles/days?market=${market}&count=30`;
+    try {
+      const response = await fetch(apiUrl);
+      const data = await response.json();
+
+      if (Array.isArray(data)) {
+        updatePriceChart(data, `${koreanName} (${market})`);
+        chartSection.style.display = 'block';  // 차트 섹션을 보이도록 설정
+        cryptoInfoSection.style.display = 'none';  // 암호화폐 리스트 숨기기
+      } else {
+        console.error('Unexpected data format:', data);
+      }
+    } catch (error) {
+      console.error('Error fetching crypto history:', error);
+    }
+  }
+
+  function toggleLoadingSpinner(show) {
+    const spinner = document.getElementById('loading-spinner');
+    spinner.style.display = show ? 'block' : 'none';
+  }
+
+  async function fetchAllCryptoPrices() {
+    toggleLoadingSpinner(true);
+    try {
+      // 데이터 fetch 로직
+    } catch (err) {
+      console.error('Fetch error:', err);
+    } finally {
+      toggleLoadingSpinner(false);
+    }
+  }
 
   // 정렬 함수 (가격순, 이름순)
   // 기존 sortCryptoList 함수 수정
@@ -51,7 +148,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
 
-  // 암호화폐 리스트 렌더링
   function renderCryptoList() {
     cryptoListElement.innerHTML = ""; // 리스트 초기화
     cryptoData.forEach((crypto) => {
@@ -77,12 +173,16 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       listItem.innerHTML = `
-        <span>${crypto.koreanName}</span>
-        <span style="color:${crypto.priceColor}">${formattedPrice} (${formattedChange} ${changeArrow})</span>
-      `;
+      <span>${crypto.koreanName}</span>
+      <span style="color:${crypto.priceColor}">${formattedPrice} (${formattedChange} ${changeArrow})</span>
+    `;
 
       // 암호화폐 클릭 시 과거 기록 보여주는 이벤트 추가
-      listItem.addEventListener("click", () => fetchCryptoHistory(crypto.market, crypto.koreanName));
+      listItem.addEventListener("click", () => {
+        chartSection.style.display = 'block';  // 차트 섹션을 보이도록 설정
+        chartTitle.textContent = `${crypto.koreanName} (${crypto.market})`;  // 차트 제목 업데이트
+        fetchCryptoHistory(crypto.market, crypto.koreanName);  // 해당 암호화폐의 캔들 데이터 가져오기
+      });
 
       cryptoListElement.appendChild(listItem);
     });
@@ -239,5 +339,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // 데이터 로딩 및 주기적인 업데이트
   fetchAllCryptoPrices();
-  setInterval(fetchAllCryptoPrices, 10000); // 10초마다 데이터 업데이트
+  let isFetching = false;
+  setInterval(() => {
+    if (!isFetching) {
+      isFetching = true;
+      fetchAllCryptoPrices().finally(() => {
+        isFetching = false;
+      });
+    }
+  }, 10000);
 });
