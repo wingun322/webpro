@@ -403,8 +403,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 10000);
 
     function fetchNews() {
-      const apiKey = '{your_api_key}';
-      const url = `https://min-api.cryptocompare.com/data/v2/news/?lang=EN&api_key=${apiKey}`;
+      const url = `https://min-api.cryptocompare.com/data/v2/news/?lang=EN`;
 
       fetch(url)
         .then(response => response.json())
