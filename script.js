@@ -1,351 +1,461 @@
 document.addEventListener("DOMContentLoaded", () => {
-  const cryptoListElement = document.getElementById("crypto-list");
-  const sortBtns = document.querySelectorAll('.sort-btn');
-  const toggleChangeTypeBtn = document.getElementById('toggle-change-type');
-  let currentSort = 'name'; // 초기 정렬 기준 (기본은 이름순)
-  let sortDirection = { // 정렬 방향 (true: 오름차순, false: 내림차순)
-    name: true,
-    price: true
-  };
-  let showChangePrice = true; // 변화액(true) 또는 변화율(false) 표시 여부
-  let previousPrices = {}; // 가격 변화 추적 객체
-  let cryptoData = []; // 암호화폐 데이터를 저장할 변수
-  const apiBaseUrl = "https://api.bithumb.com/v1/candles/days";
-  const backToListBtn = document.getElementById('back-to-list-btn');
-  const cryptoInfoSection = document.getElementById("crypto-info-section");
-  const chartSection = document.getElementById("chart-section");
-  const chartTitle = document.getElementById("chart-title");
-  const ctx = document.getElementById("priceChart").getContext("2d");
-  let priceChart;
+    const elements = {
+      cryptoList: document.getElementById("crypto-list"),
+      sortBtns: document.querySelectorAll('.sort-btn'),
+      toggleChangeTypeBtn: document.getElementById('toggle-change-type'),
+      backToListBtn: document.getElementById('back-to-list-btn'),
+      cryptoInfoSection: document.getElementById("crypto-info-section"),
+      chartSection: document.getElementById("chart-section"),
+      chartTitle: document.getElementById("chart-title"),
+      ctx: document.getElementById("priceChart").getContext("2d"),
+      dayCandleBtn: document.getElementById('day-candle-btn'),
+      minuteCandleBtn: document.getElementById('minute-candle-btn'),
+      weekCandleBtn: document.getElementById('week-candle-btn'),
+      monthCandleBtn: document.getElementById('month-candle-btn'),
+      searchBar: document.getElementById('search-bar'),
+      loadingSpinner: document.getElementById('loading-spinner')
+    };
 
-  // 변화율/변화액 전환 버튼 클릭 이벤트
-  toggleChangeTypeBtn.addEventListener("click", () => {
-    showChangePrice = !showChangePrice;
-    toggleChangeTypeBtn.textContent = showChangePrice ? '변화액' : '변화율';
-    renderCryptoList(); // 리스트 다시 렌더링
-  });
+    let state = {
+      currentSort: 'name',
+      sortDirection: { name: true, price: true, changeAmount: true, changeRate: true },
+      showChangePrice: true,
+      previousPrices: {},
+      cryptoData: [],
+      filteredCryptoData: [],
+      priceChart: null,
+      isFetching: false
+    };
 
-  // 뒤로 가기 버튼 클릭 시 암호화폐 리스트로 돌아가기
-  backToListBtn.addEventListener("click", () => {
-    chartSection.style.display = 'none';  // 차트 숨기기
-    cryptoInfoSection.style.display = 'block';  // 암호화폐 리스트 보이기
-  });
+    const apiBaseUrl = "https://api.bithumb.com/v1/candles/days";
 
-  // 캔들 데이터 차트 생성/업데이트
-  function updatePriceChart(candleData, title) {
-    const labels = candleData.map(item => item.candle_date_time_kst.split('T')[0]);
-    const openPrices = candleData.map(item => item.opening_price);
-    const highPrices = candleData.map(item => item.high_price);
-    const lowPrices = candleData.map(item => item.low_price);
-    const closePrices = candleData.map(item => item.trade_price);
+    elements.toggleChangeTypeBtn.addEventListener("click", toggleChangeType);
+    elements.backToListBtn.addEventListener("click", showCryptoList);
+    elements.dayCandleBtn.addEventListener('click', () => switchCandleChart(null));
+    elements.minuteCandleBtn.addEventListener('click', () => switchCandleChart(5));
+    elements.weekCandleBtn.addEventListener('click', () => switchCandleChart('week'));
+    elements.monthCandleBtn.addEventListener('click', () => switchCandleChart('month'));
+    elements.searchBar.addEventListener('input', filterCryptoList);
 
-    // 차트가 이미 생성된 경우 업데이트
-    if (priceChart) {
-      priceChart.data.labels = labels;
-      priceChart.data.datasets[0].data = openPrices;
-      priceChart.data.datasets[1].data = highPrices;
-      priceChart.data.datasets[2].data = lowPrices;
-      priceChart.data.datasets[3].data = closePrices;
-      priceChart.update();
-    } else {
-      // 새 차트 생성
-      priceChart = new Chart(ctx, {
+    function toggleChangeType() {
+      state.showChangePrice = !state.showChangePrice;
+      elements.toggleChangeTypeBtn.textContent = state.showChangePrice ? '변화액' : '변화율';
+      renderCryptoList();
+    }
+
+    function showCryptoList() {
+      if (window.candleInterval) {
+        clearInterval(window.candleInterval);
+      }
+      elements.chartSection.style.display = 'none';
+      elements.cryptoInfoSection.style.display = 'block';
+      document.getElementById('news-section').style.display = 'none';
+    }
+
+    function startCandleDataInterval(market, unit, koreanName) {
+      // 이전 인터벌이 있다면 제거
+      if (window.candleInterval) {
+        clearInterval(window.candleInterval);
+      }
+    
+      // 새로운 인터벌 설정
+      window.candleInterval = setInterval(() => {
+        fetchCandleData(market, unit, koreanName);
+      }, 60000); // 60000ms = 1분
+    }
+
+    function switchCandleChart(unit) {
+      elements.dayCandleBtn.classList.remove('active');
+      elements.minuteCandleBtn.classList.remove('active');
+      elements.weekCandleBtn.classList.remove('active');
+      elements.monthCandleBtn.classList.remove('active');
+
+      switch(unit) {
+        case 5:
+          elements.minuteCandleBtn.classList.add('active');
+          break;
+        case 'week':
+          elements.weekCandleBtn.classList.add('active');
+          break;
+        case 'month':
+          elements.monthCandleBtn.classList.add('active');
+          break;
+        default:
+          elements.dayCandleBtn.classList.add('active');
+      }
+
+      const rawMarket = elements.chartTitle.textContent.match(/\(([^)]+)\)/);
+      if (rawMarket) {
+        const market = rawMarket[1];
+        fetchCandleData(market, unit, elements.chartTitle.textContent);
+        startCandleDataInterval(market, unit, elements.chartTitle.textContent);
+      }
+    }
+
+    async function fetchCandleData(market, unit = null, koreanName) {
+      const apiUrl = getCandleApiUrl(market, unit);
+      try {
+        const response = await fetch(apiUrl);
+        const data = await response.json();
+        if (Array.isArray(data)) {
+          updatePriceChart(data, `${koreanName} (${market}) - ${unit ? `${unit} 차트` : '일 차트'}`, unit);
+          elements.chartSection.style.display = 'block';
+          elements.cryptoInfoSection.style.display = 'none';
+        } else {
+          console.error('Unexpected data format:', data);
+        }
+      } catch (error) {
+        console.error('Error fetching candle data:', error);
+      }
+    }
+
+    function getCandleApiUrl(market, unit) {
+      const baseUrl = "https://api.bithumb.com/v1/candles";
+      if (unit === 'week') return `${baseUrl}/weeks?market=${market}&count=30`;
+      if (unit === 'month') return `${baseUrl}/months?market=${market}&count=30`;
+      if (unit) return `${baseUrl}/minutes/${unit}?market=${market}&count=30`;
+      return `${baseUrl}/days?market=${market}&count=30`;
+    }
+
+    function updatePriceChart(candleData, title, unit) {
+      const reversedData = [...candleData].reverse();
+      
+      const labels = reversedData.map(item => formatCandleDate(item.candle_date_time_kst, unit));
+      const openPrices = reversedData.map(item => item.opening_price);
+      const highPrices = reversedData.map(item => item.high_price);
+      const lowPrices = reversedData.map(item => item.low_price);
+      const closePrices = reversedData.map(item => item.trade_price);
+
+      if (state.priceChart) {
+        state.priceChart.destroy();
+      }
+
+      state.priceChart = new Chart(elements.ctx, {
         type: 'line',
         data: {
           labels: labels,
           datasets: [
-            { label: '시가', data: openPrices, borderColor: 'orange', fill: false },
-            { label: '고가', data: highPrices, borderColor: 'green', fill: false },
-            { label: '저가', data: lowPrices, borderColor: 'blue', fill: false },
-            { label: '종가', data: closePrices, borderColor: 'red', fill: false },
-          ],
+            {
+              label: '시가',
+              data: openPrices,
+              borderColor: 'rgba(75, 192, 192, 1)',
+              tension: 0.1
+            },
+            {
+              label: '고가',
+              data: highPrices,
+              borderColor: 'rgba(255, 99, 132, 1)',
+              tension: 0.1
+            },
+            {
+              label: '저가',
+              data: lowPrices,
+              borderColor: 'rgba(54, 162, 235, 1)',
+              tension: 0.1
+            },
+            {
+              label: '종가',
+              data: closePrices,
+              borderColor: 'rgba(255, 206, 86, 1)',
+              tension: 0.1
+            }
+          ]
         },
         options: {
           responsive: true,
-          plugins: {
-            legend: { position: 'top' },
-            title: { display: true, text: title },
-          },
+          maintainAspectRatio: false,
           scales: {
             x: {
-              title: { display: true, text: '날짜' },
-              reverse: true,  // X축 반전
+              grid: {
+                display: true
+              },
+              ticks: {
+                autoSkip: false,
+                maxRotation: 45,
+                minRotation: 45,
+                align: 'end'
+              },
+              min: labels.length - 30,
+              max: labels.length - 1,
+              pan: {
+                enabled: true,
+                mode: 'x'
+              },
+              zoom: {
+                enabled: true,
+                mode: 'x'
+              }
             },
             y: {
-              title: { display: true, text: '가격 (₩)' },
               position: 'right',
-            },
+              grid: {
+                display: true
+              }
+            }
           },
-        },
+          plugins: {
+            zoom: {
+              pan: {
+                enabled: true,
+                mode: 'x'
+              },
+              zoom: {
+                wheel: {
+                  enabled: true
+                },
+                pinch: {
+                  enabled: true
+                },
+                mode: 'x'
+              }
+            },
+            legend: {
+              position: 'top',
+            },
+            title: {
+              display: true,
+              text: title
+            }
+          }
+        }
       });
     }
-  }
 
-  async function fetchCryptoHistory(market, koreanName) {
-    const apiUrl = `https://api.bithumb.com/v1/candles/days?market=${market}&count=30`;
-    try {
-      const response = await fetch(apiUrl);
-      const data = await response.json();
-
-      if (Array.isArray(data)) {
-        updatePriceChart(data, `${koreanName} (${market})`);
-        chartSection.style.display = 'block';  // 차트 섹션을 보이도록 설정
-        cryptoInfoSection.style.display = 'none';  // 암호화폐 리스트 숨기기
-      } else {
-        console.error('Unexpected data format:', data);
+    function formatCandleDate(dateString, unit) {
+      const candleDate = new Date(dateString);
+      const now = new Date();
+      if(unit == 'week'){
+        return formatDate(candleDate);
+      } else if (unit == 'month') {
+        return formatDate(candleDate);
+      } else if (unit) {
+        const diffInMinutes = Math.floor((now - candleDate) / (1000 * 60));
+        const diffInHours = Math.floor(diffInMinutes / 60);
+        const diffInDays = Math.floor(diffInHours / 24);
+        if (diffInMinutes < 60) return `${diffInMinutes}분 전`;
+        if (diffInHours < 24) return `${diffInHours}시간 ${diffInMinutes % 60}분 전`;
+        return formatDate(candleDate);
       }
-    } catch (error) {
-      console.error('Error fetching crypto history:', error);
+      return formatDate(candleDate);
     }
-  }
 
-  function toggleLoadingSpinner(show) {
-    const spinner = document.getElementById('loading-spinner');
-    spinner.style.display = show ? 'block' : 'none';
-  }
-
-  async function fetchAllCryptoPrices() {
-    toggleLoadingSpinner(true);
-    try {
-      // 데이터 fetch 로직
-    } catch (err) {
-      console.error('Fetch error:', err);
-    } finally {
-      toggleLoadingSpinner(false);
+    function formatDate(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
     }
-  }
 
-  // 정렬 함수 (가격순, 이름순)
-  // 기존 sortCryptoList 함수 수정
-  function sortCryptoList(criteria) {
-    if (criteria === 'name') {
-      cryptoData.sort((a, b) => {
-        return sortDirection.name
-            ? a.koreanName.localeCompare(b.koreanName) // 오름차순
-            : b.koreanName.localeCompare(a.koreanName); // 내림차순
-      });
-    } else if (criteria === 'price') {
-      cryptoData.sort((a, b) => {
-        return sortDirection.price
-            ? b.tradePrice - a.tradePrice // 내림차순
-            : a.tradePrice - b.tradePrice; // 오름차순
-      });
-    } else if (criteria === 'changeAmount') {
-      cryptoData.sort((a, b) => {
-        return sortDirection.changeAmount
-            ? b.signedChangePrice - a.signedChangePrice // 내림차순
-            : a.signedChangePrice - b.signedChangePrice; // 오름차순
-      });
-    } else if (criteria === 'changeRate') {
-      cryptoData.sort((a, b) => {
-        return sortDirection.changeRate
-            ? b.signedChangeRate - a.signedChangeRate // 내림차순
-            : a.signedChangeRate - b.signedChangeRate; // 오름차순
+    function filterCryptoList() {
+      const searchInput = elements.searchBar.value.toLowerCase();
+      state.filteredCryptoData = state.cryptoData.filter(item => item.koreanName.toLowerCase().includes(searchInput));
+      renderCryptoList();
+    }
+
+    function renderCryptoList() {
+      elements.cryptoList.innerHTML = "";
+      const dataToRender = state.filteredCryptoData.length > 0 ? state.filteredCryptoData : state.cryptoData;
+      dataToRender.forEach(crypto => {
+        const listItem = createCryptoListItem(crypto);
+        elements.cryptoList.appendChild(listItem);
       });
     }
-    renderCryptoList(); // 정렬 후 다시 화면에 렌더링
-    updateSortButtons(); // 버튼과 화살표 업데이트
-  }
 
-
-  function renderCryptoList() {
-    cryptoListElement.innerHTML = ""; // 리스트 초기화
-    cryptoData.forEach((crypto) => {
+    function createCryptoListItem(crypto) {
       const formattedPrice = `₩${crypto.tradePrice.toLocaleString()}`;
-      // 변화액과 변화율을 선택적으로 표시
-      const formattedChange = showChangePrice
-          ? (crypto.signedChangePrice ? `${crypto.signedChangePrice.toLocaleString()}₩` : '-') // 변화액
-          : (crypto.signedChangeRate ? `${(crypto.signedChangeRate * 100).toFixed(2)}%` : '-'); // 변화율
-
-      // 이전 가격 업데이트
-      previousPrices[crypto.market] = crypto.tradePrice;
+      const formattedChange = state.showChangePrice
+        ? (crypto.signedChangePrice ? `${crypto.signedChangePrice.toLocaleString()}₩` : '-')
+        : (crypto.signedChangeRate ? `${(crypto.signedChangeRate * 100).toFixed(2)}%` : '-');
+      state.previousPrices[crypto.market] = crypto.tradePrice;
 
       const listItem = document.createElement("li");
-
-      // 변화 금액에 따른 화살표 표시 (세모 모양)
-      let changeArrow = '';
-      if (crypto.signedChangePrice > 0) {
-        changeArrow = `<span class="triangle-up"></span>`; // 상승
-      } else if (crypto.signedChangePrice < 0) {
-        changeArrow = `<span class="triangle-down"></span>`; // 하락
-      } else {
-        changeArrow = `<span class="triangle-neutral"></span>`; // 보합
-      }
-
       listItem.innerHTML = `
-      <span>${crypto.koreanName}</span>
-      <span style="color:${crypto.priceColor}">${formattedPrice} (${formattedChange} ${changeArrow})</span>
-    `;
-
-      // 암호화폐 클릭 시 과거 기록 보여주는 이벤트 추가
+        <span>${crypto.koreanName}</span>
+        <span style="color:${crypto.priceColor}">${formattedPrice} (${formattedChange} ${getChangeArrow(crypto.signedChangePrice)})</span>
+      `;
       listItem.addEventListener("click", () => {
-        chartSection.style.display = 'block';  // 차트 섹션을 보이도록 설정
-        chartTitle.textContent = `${crypto.koreanName} (${crypto.market})`;  // 차트 제목 업데이트
-        fetchCryptoHistory(crypto.market, crypto.koreanName);  // 해당 암호화폐의 캔들 데이터 가져오기
+        elements.chartSection.style.display = 'block';
+        elements.chartTitle.textContent = `${crypto.koreanName} (${crypto.market})`;
+        fetchCryptoHistory(crypto.market, crypto.koreanName);
       });
-
-      cryptoListElement.appendChild(listItem);
-    });
-  }
-
-  // 정렬 버튼 상태 업데이트
-  function updateSortButtons() {
-    sortBtns.forEach(button => {
-      button.classList.remove('active');
-      const arrow = button.querySelector('.arrow');
-      if (arrow) {
-        arrow.remove(); // 기존 화살표 제거
-      }
-    });
-
-    let activeButton;
-    if (currentSort === 'name') {
-      activeButton = document.getElementById('sort-by-name');
-      activeButton.classList.add('active');
-      const arrow = document.createElement('span');
-      arrow.classList.add('arrow');
-      if (sortDirection.name) {
-        arrow.classList.add('arrow-down'); // 오름차순
-      } else {
-        arrow.classList.add('arrow-up'); // 내림차순
-      }
-      activeButton.appendChild(arrow);
-    } else if (currentSort === 'price') {
-      activeButton = document.getElementById('sort-by-price');
-      activeButton.classList.add('active');
-      const arrow = document.createElement('span');
-      arrow.classList.add('arrow');
-      if (sortDirection.price) {
-        arrow.classList.add('arrow-down'); // 내림차순
-      } else {
-        arrow.classList.add('arrow-up'); // 오름차순
-      }
-      activeButton.appendChild(arrow);
-    } else if (currentSort === 'changeAmount') {
-      activeButton = document.getElementById('sort-by-change-amount');
-      activeButton.classList.add('active');
-      const arrow = document.createElement('span');
-      arrow.classList.add('arrow');
-      if (sortDirection.changeAmount) {
-        arrow.classList.add('arrow-down'); // 내림차순
-      } else {
-        arrow.classList.add('arrow-up'); // 오름차순
-      }
-      activeButton.appendChild(arrow);
-    } else if (currentSort === 'changeRate') {
-      activeButton = document.getElementById('sort-by-change-rate');
-      activeButton.classList.add('active');
-      const arrow = document.createElement('span');
-      arrow.classList.add('arrow');
-      if (sortDirection.changeRate) {
-        arrow.classList.add('arrow-down'); // 내림차순
-      } else {
-        arrow.classList.add('arrow-up'); // 오름차순
-      }
-      activeButton.appendChild(arrow);
+      return listItem;
     }
-  }
 
-
-  // 정렬 버튼 클릭 이벤트 처리
-  document.getElementById("sort-by-name").addEventListener("click", () => {
-    if (currentSort === 'name') {
-      sortDirection.name = !sortDirection.name;
-    } else {
-      currentSort = 'name';
-      sortDirection.name = true;
+    function getChangeArrow(changePrice) {
+      if (changePrice > 0) return `<span class="triangle-up"></span>`;
+      if (changePrice < 0) return `<span class="triangle-down"></span>`;
+      return `<span class="triangle-neutral"></span>`;
     }
-    sortCryptoList('name');
-  });
 
-  document.getElementById("sort-by-price").addEventListener("click", () => {
-    if (currentSort === 'price') {
-      sortDirection.price = !sortDirection.price;
-    } else {
-      currentSort = 'price';
-      sortDirection.price = true;
+    async function fetchCryptoHistory(market, koreanName) {
+      elements.dayCandleBtn.classList.remove('active');
+      elements.minuteCandleBtn.classList.remove('active');
+      elements.weekCandleBtn.classList.remove('active');
+      elements.monthCandleBtn.classList.remove('active');
+      
+      elements.dayCandleBtn.classList.add('active');
+      
+      fetchCandleData(market, null, koreanName);
     }
-    sortCryptoList('price');
-  });
 
-  document.getElementById("sort-by-change-amount").addEventListener("click", () => {
-    if (currentSort === 'changeAmount') {
-      sortDirection.changeAmount = !sortDirection.changeAmount;
-    } else {
-      currentSort = 'changeAmount';
-      sortDirection.changeAmount = true;
-    }
-    sortCryptoList('changeAmount');
-  });
-
-  document.getElementById("sort-by-change-rate").addEventListener("click", () => {
-    if (currentSort === 'changeRate') {
-      sortDirection.changeRate = !sortDirection.changeRate;
-    } else {
-      currentSort = 'changeRate';
-      sortDirection.changeRate = true;
-    }
-    sortCryptoList('changeRate');
-  });
-
-  // 암호화폐 데이터 초기화 및 1분마다 업데이트
-  async function fetchAllCryptoPrices() {
-    try {
-      const options = { method: 'GET', headers: { accept: 'application/json' } };
-      let result;
-
-      const marketResponse = await fetch('https://api.bithumb.com/v1/market/all?isDetails=false', options);
-      const marketData = await marketResponse.json();
-
-      if (Array.isArray(marketData)) {
-        const markets = marketData.map(item => item.market).join(',');
-
-        const tickerResponse = await fetch(`https://api.bithumb.com/v1/ticker?markets=${markets}`, options);
-        const tickerData = await tickerResponse.json();
-
-        if (Array.isArray(tickerData)) {
-          result = tickerData.map(item => {
-            const marketInfo = marketData.find(marketItem => marketItem.market === item.market);
-
-            let priceColor;
-            if (item.change === 'EVEN') {
-              priceColor = 'black';
-            } else if (item.change === 'RISE') {
-              priceColor = 'red';
-            } else if (item.change === 'FALL') {
-              priceColor = 'blue';
-            }
-
-            return {
-              market: item.market,
-              tradePrice: item.trade_price,
-              koreanName: marketInfo ? marketInfo.korean_name : 'N/A',
-              priceColor: priceColor,
-              signedChangePrice: item.signed_change_price,
-              signedChangeRate: item.signed_change_rate
-            };
-          });
-
-          cryptoData = result;
-          sortCryptoList(currentSort); // 데이터를 받아오고 난 후, 정렬 및 렌더링
+    async function fetchAllCryptoPrices() {
+      toggleLoadingSpinner(true);
+      try {
+        const options = { method: 'GET', headers: { accept: 'application/json' } };
+        const marketResponse = await fetch('https://api.bithumb.com/v1/market/all?isDetails=false', options);
+        const marketData = await marketResponse.json();
+        if (Array.isArray(marketData)) {
+          const markets = marketData.map(item => item.market).join(',');
+          const tickerResponse = await fetch(`https://api.bithumb.com/v1/ticker?markets=${markets}`, options);
+          const tickerData = await tickerResponse.json();
+          if (Array.isArray(tickerData)) {
+            state.cryptoData = tickerData.map(item => mapTickerData(item, marketData));
+            sortCryptoList(state.currentSort);
+          }
+        } else {
+          console.error('Expected an array in marketData response');
         }
-      } else {
-        console.error('Expected an array in marketData response');
+      } catch (err) {
+        console.error('Fetch error:', err);
+      } finally {
+        toggleLoadingSpinner(false);
       }
-    } catch (err) {
-      console.error('Fetch error:', err);
     }
-  }
 
-  // 데이터 로딩 및 주기적인 업데이트
-  fetchAllCryptoPrices();
-  let isFetching = false;
-  setInterval(() => {
-    if (!isFetching) {
-      isFetching = true;
-      fetchAllCryptoPrices().finally(() => {
-        isFetching = false;
+    function mapTickerData(item, marketData) {
+      const marketInfo = marketData.find(marketItem => marketItem.market === item.market);
+      const priceColor = getPriceColor(item.change);
+      return {
+        market: item.market,
+        tradePrice: item.trade_price,
+        koreanName: marketInfo ? marketInfo.korean_name : 'N/A',
+        priceColor: priceColor,
+        signedChangePrice: item.signed_change_price,
+        signedChangeRate: item.signed_change_rate
+      };
+    }
+
+    function getPriceColor(change) {
+      if (change === 'EVEN') return 'black';
+      if (change === 'RISE') return 'red';
+      if (change === 'FALL') return 'blue';
+    }
+
+    function toggleLoadingSpinner(show) {
+      elements.loadingSpinner.style.display = show ? 'block' : 'none';
+    }
+
+    function sortCryptoList(criteria) {
+      const dataToRender = state.filteredCryptoData.length > 0 ? state.filteredCryptoData : state.cryptoData;
+      const sortFunctions = {
+        name: (a, b) => state.sortDirection.name ? a.koreanName.localeCompare(b.koreanName) : b.koreanName.localeCompare(a.koreanName),
+        price: (a, b) => state.sortDirection.price ? b.tradePrice - a.tradePrice : a.tradePrice - b.tradePrice,
+        changeAmount: (a, b) => state.sortDirection.changeAmount ? b.signedChangePrice - a.signedChangePrice : a.signedChangePrice - b.signedChangePrice,
+        changeRate: (a, b) => state.sortDirection.changeRate ? b.signedChangeRate - a.signedChangeRate : a.signedChangeRate - b.signedChangeRate
+      };
+      dataToRender.sort(sortFunctions[criteria]);
+      renderCryptoList();
+      updateSortButtons();
+    }
+
+    function updateSortButtons() {
+      elements.sortBtns.forEach(button => {
+        button.classList.remove('active');
+        const arrow = button.querySelector('.arrow');
+        if (arrow) arrow.remove();
+      });
+
+      const activeButton = document.getElementById(`sort-by-${state.currentSort}`);
+      if (!activeButton) {
+        console.error(`No button found for current sort: ${state.currentSort}`);
+        return;
+      }
+      activeButton.classList.add('active');
+      const arrow = document.createElement('span');
+      arrow.classList.add('arrow', state.sortDirection[state.currentSort] ? 'arrow-down' : 'arrow-up');
+      activeButton.appendChild(arrow);
+    }
+
+    document.getElementById("sort-by-name").addEventListener("click", () => toggleSort('name'));
+    document.getElementById("sort-by-price").addEventListener("click", () => toggleSort('price'));
+    document.getElementById("sort-by-changeAmount").addEventListener("click", () => toggleSort('changeAmount'));
+    document.getElementById("sort-by-changeRate").addEventListener("click", () => toggleSort('changeRate'));
+
+    function toggleSort(criteria) {
+      if (state.currentSort === criteria) {
+        state.sortDirection[criteria] = !state.sortDirection[criteria];
+      } else {
+        state.currentSort = criteria;
+        state.sortDirection[criteria] = true;
+      }
+      sortCryptoList(criteria);
+      updateSortButtons();
+    }
+
+    fetchAllCryptoPrices();
+    setInterval(() => {
+      if (!state.isFetching) {
+        state.isFetching = true;
+        fetchAllCryptoPrices().finally(() => {
+          state.isFetching = false;
+        });
+      }
+    }, 10000);
+
+    function fetchNews() {
+      const apiKey = '{your_api_key}';
+      const url = `https://min-api.cryptocompare.com/data/v2/news/?lang=EN&api_key=${apiKey}`;
+
+      fetch(url)
+        .then(response => response.json())
+        .then(data => {
+          renderNews(data.Data);
+        })
+        .catch(error => console.error('Error fetching news:', error));
+    }
+
+    function renderNews(newsData) {
+      const newsList = document.getElementById('news-list');
+      newsList.innerHTML = ''; // Clear existing news
+
+      newsData.forEach(article => {
+        const newsItem = document.createElement('div');
+        newsItem.classList.add('news-card');
+        newsItem.innerHTML = `
+          <img src="${article.imageurl}" alt="${article.title}" class="news-image">
+          <div class="news-content">
+            <h3>${article.title}</h3>
+            <p>${article.body}</p>
+            <a href="${article.url}" target="_blank">Read more</a>
+          </div>
+        `;
+        newsList.appendChild(newsItem);
       });
     }
-  }, 10000);
-});
+
+    document.querySelector('.nav-menu a[href="#news-section"]').addEventListener('click', (event) => {
+      event.preventDefault();
+      showNewsSection();
+      setActiveTab(event.target);
+    });
+
+    document.querySelector('.nav-menu a[href="#crypto-info-section"]').addEventListener('click', (event) => {
+      event.preventDefault();
+      showCryptoList();
+      setActiveTab(event.target);
+    });
+
+    function showNewsSection() {
+      elements.cryptoInfoSection.style.display = 'none';
+      elements.chartSection.style.display = 'none';
+      document.getElementById('news-section').style.display = 'block';
+      fetchNews(); // Assuming you have a function to fetch and display news
+    }
+
+    function setActiveTab(selectedTab) {
+      document.querySelectorAll('.nav-menu a').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      selectedTab.classList.add('active');
+    }
+  });
