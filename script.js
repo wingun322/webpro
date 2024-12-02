@@ -6,16 +6,6 @@ document.addEventListener("DOMContentLoaded", () => {
     // 알림 상태 표시 요소 생성
     const notificationStatus = document.createElement('div');
     notificationStatus.className = 'notification-status';
-
-    // 알림 권한 변경 감지
-    navigator.permissions.query({name:'notifications'}).then(function(permissionStatus) {
-        console.log('현재 알림 권한 상태:', permissionStatus.state);
-        
-        permissionStatus.onchange = function() {
-            console.log('알림 권한 상태 변경:', this.state);
-            updateNotificationStatus();
-        };
-    });
     
     // 알림 권한 상태 업데이트 함수
     function updateNotificationStatus() {
@@ -27,7 +17,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         const permission = Notification.permission;
-        console.log('현재 브라우저 알림 권한:', permission);
 
         if (permission === "granted") {
             notificationStatus.textContent = '알림이 허용되었습니다 ✓';
@@ -58,36 +47,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 return;
             }
 
-            // 권한 요청 전 상태 출력
-            console.log('권한 요청 전 상태:', Notification.permission);
-        
             // 권한 요청
             const permission = await Notification.requestPermission();
-            console.log('알림 권한 요청 결과:', permission);
-            
-            // 권한 요청 후 상태 다시 확인
-            console.log('권한 요청 후 상태:', Notification.permission);
-            
-            // 권한 상태 업데이트
-            if (permission === "granted" && Notification.permission === "granted") {
-                // 테스트 알림 보내기
-                try {
-                    await new Promise(resolve => setTimeout(resolve, 500)); // 약간의 지연 추가
-                    const testNotification = new Notification("알림 테스트", {
-                        body: "알림이 정상적으로 설정되었습니다.",
-                        requireInteraction: true
-                    });
-                    
-                    testNotification.onclick = function() {
-                        window.focus();
-                        this.close();
-                    };
-                    
-                    console.log('테스트 알림 생성 성공');
-                } catch (error) {
-                    console.error('테스트 알림 생성 실패:', error);
-                }
-            }
             
             updateNotificationStatus();
         } catch (error) {
@@ -725,7 +686,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 try {
                     const notification = new Notification(`${crypto.koreanName} 가격 알림`, {
                         body: `목표가 ${alert.price.toLocaleString()}원 ${alert.condition === 'above' ? '이상' : '이하'}으로 도달했습니다.\n현재가: ${currentPrice.toLocaleString()}원`,
-                        icon: 'https://www.bithumb.com/favicon.ico',
                         requireInteraction: true,
                         tag: `price-alert-${crypto.market}`
                     });
@@ -747,4 +707,14 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
+
+    // 모달창 요소
+    const alertModal = document.getElementById('alert-modal');
+
+    // 모달창 배경 클릭 시 모달 닫기
+    alertModal.addEventListener('click', (event) => {
+        if (event.target === alertModal) {
+            alertModal.style.display = 'none'; // 모달 닫기
+        }
+    });
 });
