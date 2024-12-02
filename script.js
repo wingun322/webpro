@@ -372,27 +372,6 @@ document.addEventListener("DOMContentLoaded", () => {
             </div>
         `;
 
-        // 즐겨찾기 버튼 이벤트
-        const favBtn = listItem.querySelector('.favorite-btn');
-        favBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            toggleFavorite(crypto.market);
-        });
-
-        // 알림 버튼 이벤트
-        const alertBtn = listItem.querySelector('.alert-btn');
-        alertBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            showAlertModal(crypto.market, crypto.tradePrice);
-        });
-
-        // 차트 보기 이벤트
-        listItem.addEventListener("click", () => {
-            elements.chartSection.style.display = 'block';
-            elements.chartTitle.textContent = `${crypto.koreanName} (${crypto.market})`;
-            fetchCryptoHistory(crypto.market, crypto.koreanName);
-        });
-
         elements.cryptoList.appendChild(listItem);
       });
     }

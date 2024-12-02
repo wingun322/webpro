@@ -38,12 +38,17 @@ h2 {
 }
 
 #crypto-list {
-  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   padding: 0;
   margin: 0;
 }
 
 #crypto-list li {
+  flex: 1 1 calc(33.333% - 20px);
+  margin: 5px;
+  box-sizing: border-box;
   display: flex;
   justify-content: space-between;
   padding: 10px;
@@ -181,18 +186,35 @@ button:hover {
 /* Crypto List Item */
 .crypto-item {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  padding: 10px;
-  gap: 10px;
-  border-bottom: 1px solid #eee;
+  padding: 15px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin: 10px;
+  background-color: #fff;
+  transition: transform 0.2s;
+  height: 150px;
+  width: 300px;
+  box-sizing: border-box;
+}
+
+.crypto-item:hover {
+  transform: scale(1.05); /* 카드 호버 시 확대 효과 */
 }
 
 .crypto-name {
-  flex: 1;
+  font-weight: bold;
+  margin-bottom: 5px;
+  text-align: center;
 }
 
 .crypto-price {
-  margin-right: 10px;
+  color: #007bff;
+  font-weight: bold;
+  margin-top: 5px;
+  text-align: center;
 }
 
 .favorite-btn, .alert-btn {
