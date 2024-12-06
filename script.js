@@ -343,37 +343,56 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderCryptoList() {
-      elements.cryptoList.innerHTML = "";
-      let dataToRender = state.filteredCryptoData.length > 0 ? state.filteredCryptoData : state.cryptoData;
-      
-      if (state.showOnlyFavorites) {
-        dataToRender = dataToRender.filter(crypto => state.favorites.includes(crypto.market));
-      }
-      
-      dataToRender.forEach(crypto => {
-        const listItem = document.createElement("li");
-        const isFavorite = state.favorites.includes(crypto.market);
+        elements.cryptoList.innerHTML = "";
+        let dataToRender = state.filteredCryptoData.length > 0 ? state.filteredCryptoData : state.cryptoData;
         
-        listItem.innerHTML = `
-            <div class="crypto-item">
-                <button class="favorite-btn ${isFavorite ? 'active' : ''}" data-market="${crypto.market}">
-                    ${isFavorite ? '★' : '☆'}
-                </button>
-                <span class="crypto-name">${crypto.koreanName}</span>
-                <span class="crypto-price" style="color:${crypto.priceColor}">
-                    ₩${crypto.tradePrice.toLocaleString()} 
-                    (${state.showChangePrice ? 
-                        (crypto.signedChangePrice ? `${crypto.signedChangePrice.toLocaleString()}₩` : '-') :
-                        (crypto.signedChangeRate ? `${(crypto.signedChangeRate * 100).toFixed(2)}%` : '-')
-                    }) 
-                    ${getChangeArrow(crypto.signedChangePrice)}
-                </span>
-                <button class="alert-btn" data-market="${crypto.market}">⏰</button>
-            </div>
-        `;
+        if (state.showOnlyFavorites) {
+            dataToRender = dataToRender.filter(crypto => state.favorites.includes(crypto.market));
+        }
+        
+        dataToRender.forEach(crypto => {
+            const listItem = document.createElement("li");
+            const isFavorite = state.favorites.includes(crypto.market);
+            
+            listItem.innerHTML = `
+                <div class="crypto-item">
+                    <button class="favorite-btn ${isFavorite ? 'active' : ''}" data-market="${crypto.market}">
+                        ${isFavorite ? '★' : '☆'}
+                    </button>
+                    <span class="crypto-name">${crypto.koreanName}</span>
+                    <span class="crypto-price" style="color:${crypto.priceColor}">
+                        ₩${crypto.tradePrice.toLocaleString()} 
+                        (${state.showChangePrice ? 
+                            (crypto.signedChangePrice ? `${crypto.signedChangePrice.toLocaleString()}₩` : '-') :
+                            (crypto.signedChangeRate ? `${(crypto.signedChangeRate * 100).toFixed(2)}%` : '-')
+                        }) 
+                        ${getChangeArrow(crypto.signedChangePrice)}
+                    </span>
+                    <button class="alert-btn" data-market="${crypto.market}">⏰</button>
+                </div>
+            `;
 
-        elements.cryptoList.appendChild(listItem);
-      });
+            // 클릭 이벤트 추가
+            listItem.querySelector('.crypto-item').addEventListener('click', (e) => {
+                if (!e.target.classList.contains('favorite-btn') && !e.target.classList.contains('alert-btn')) {
+                    fetchCryptoHistory(crypto.market, crypto.koreanName);
+                }
+            });
+
+            // 즐겨찾기 버튼 이벤트
+            listItem.querySelector('.favorite-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleFavorite(crypto.market);
+            });
+
+            // 알림 버튼 이벤트
+            listItem.querySelector('.alert-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                showAlertModal(crypto.market, crypto.tradePrice);
+            });
+
+            elements.cryptoList.appendChild(listItem);
+        });
     }
 
     function getChangeArrow(changePrice) {
