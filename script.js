@@ -77,7 +77,10 @@ document.addEventListener("DOMContentLoaded", () => {
       alertPrice: document.getElementById('alert-price'),
       alertCondition: document.getElementById('alert-condition'),
       saveAlertBtn: document.getElementById('save-alert'),
-      closeModalBtn: document.getElementById('close-modal')
+      closeModalBtn: document.getElementById('close-modal'),
+      openPriceBtn: document.getElementById('open-price-btn'),
+      highPriceBtn: document.getElementById('high-price-btn'),
+      lowPriceBtn: document.getElementById('low-price-btn'),
     };
 
     let state = {
@@ -91,7 +94,23 @@ document.addEventListener("DOMContentLoaded", () => {
       isFetching: false,
       favorites: JSON.parse(localStorage.getItem('favorites') || '[]'),
       alerts: JSON.parse(localStorage.getItem('alerts') || '[]'),
-      showOnlyFavorites: false
+      showOnlyFavorites: false,
+      indicators: {
+        ma: false,
+        rsi: false,
+        macd: false
+      },
+      currentCandleData: null,
+      currentTitle: '',
+      currentUnit: 'day',
+      currentMarket: null,
+      currentName: null,
+      priceIndicators: {
+        open: true,    // 시가
+        high: true,    // 고가
+        low: true,     // 저가
+        close: true    // 종가
+      }
     };
 
     const apiBaseUrl = "https://api.bithumb.com/v1/candles/days";
@@ -155,40 +174,51 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function switchCandleChart(unit) {
-      elements.dayCandleBtn.classList.remove('active');
-      elements.minuteCandleBtn.classList.remove('active');
-      elements.weekCandleBtn.classList.remove('active');
-      elements.monthCandleBtn.classList.remove('active');
+        console.log('switchCandleChart 호출됨:', unit);  // 디버깅용
+        
+        // 버튼 상태 초기화
+        elements.dayCandleBtn.classList.remove('active');
+        elements.minuteCandleBtn.classList.remove('active');
+        elements.weekCandleBtn.classList.remove('active');
+        elements.monthCandleBtn.classList.remove('active');
 
-      switch(unit) {
-        case 5:
-          elements.minuteCandleBtn.classList.add('active');
-          break;
-        case 'week':
-          elements.weekCandleBtn.classList.add('active');
-          break;
-        case 'month':
-          elements.monthCandleBtn.classList.add('active');
-          break;
-        default:
-          elements.dayCandleBtn.classList.add('active');
-      }
+        // 활성 버튼 설정
+        switch(unit) {
+            case 5:
+                elements.minuteCandleBtn.classList.add('active');
+                break;
+            case 'week':
+                elements.weekCandleBtn.classList.add('active');
+                break;
+            case 'month':
+                elements.monthCandleBtn.classList.add('active');
+                break;
+            default:
+                elements.dayCandleBtn.classList.add('active');
+        }
 
-      const rawMarket = elements.chartTitle.textContent.match(/\(([^)]+)\)/);
-      if (rawMarket) {
-        const market = rawMarket[1];
-        fetchCandleData(market, unit, elements.chartTitle.textContent);
-        startCandleDataInterval(market, unit, elements.chartTitle.textContent);
-      }
+        // state에서 현재 마켓 정보 확인
+        if (state.currentMarket && state.currentName) {
+            fetchCandleData(state.currentMarket, unit, state.currentName);
+            startCandleDataInterval(state.currentMarket, unit, state.currentName);
+        } else {
+            console.error('마켓 정보를 찾을 수 없습니다');
+        }
     }
 
-    async function fetchCandleData(market, unit = null, koreanName) {
+    async function fetchCandleData(market, unit, name) {
       const apiUrl = getCandleApiUrl(market, unit);
       try {
         const response = await fetch(apiUrl);
         const data = await response.json();
         if (Array.isArray(data)) {
-          updatePriceChart(data, `${koreanName} (${market}) - ${unit ? `${unit} 차트` : '일 차트'}`, unit);
+          // 상태 업데이트
+          state.currentCandleData = data;
+          state.currentTitle = name;
+          state.currentUnit = unit;
+          
+          // 차트 업데이트
+          updatePriceChart(data, name, unit);
           elements.chartSection.style.display = 'block';
           elements.cryptoInfoSection.style.display = 'none';
         } else {
@@ -209,104 +239,169 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function updatePriceChart(candleData, title, unit) {
       const reversedData = [...candleData].reverse();
-      
       const labels = reversedData.map(item => formatCandleDate(item.candle_date_time_kst, unit));
-      const openPrices = reversedData.map(item => item.opening_price);
-      const highPrices = reversedData.map(item => item.high_price);
-      const lowPrices = reversedData.map(item => item.low_price);
       const closePrices = reversedData.map(item => item.trade_price);
+      
+      const datasets = [
+        {
+          label: '종가',
+          data: closePrices,
+          borderColor: 'rgba(255, 206, 86, 1)',
+          tension: 0.1
+        }
+      ];
+
+      if (state.priceIndicators.open) {
+        datasets.push({
+          label: '시가',
+          data: reversedData.map(item => item.opening_price),
+          borderColor: 'rgba(75, 192, 192, 1)',
+          tension: 0.1
+        });
+      }
+      if (state.priceIndicators.high) {
+        datasets.push({
+          label: '고가',
+          data: reversedData.map(item => item.high_price),
+          borderColor: 'rgba(255, 99, 132, 1)',
+          tension: 0.1
+        });
+      }
+      if (state.priceIndicators.low) {
+        datasets.push({
+          label: '저가',
+          data: reversedData.map(item => item.low_price),
+          borderColor: 'rgba(54, 162, 235, 1)',
+          tension: 0.1
+        });
+      }
+
+      if (state.indicators.ma) {
+        const ma5 = calculateMA(closePrices, 5);
+        const ma20 = calculateMA(closePrices, 20);
+        const ma60 = calculateMA(closePrices, 60);
+
+        datasets.push(
+          {
+            label: 'MA5',
+            data: ma5,
+            borderColor: 'rgba(255, 99, 132, 1)',
+            borderWidth: 1,
+            fill: false
+          },
+          {
+            label: 'MA20',
+            data: ma20,
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1,
+            fill: false
+          },
+          {
+            label: 'MA60',
+            data: ma60,
+            borderColor: 'rgba(75, 192, 192, 1)',
+            borderWidth: 1,
+            fill: false
+          }
+        );
+      }
+
+      if (state.indicators.rsi) {
+        const rsiData = calculateRSI(closePrices);
+        datasets.push({
+          label: 'RSI',
+          data: rsiData,
+          borderColor: 'rgba(153, 102, 255, 1)',
+          yAxisID: 'rsi'
+        });
+      }
+
+      if (state.indicators.macd) {
+        const macdData = calculateMACD(closePrices);
+        datasets.push(
+          {
+            label: 'MACD',
+            data: macdData.macd,
+            borderColor: 'rgba(255, 159, 64, 1)',
+            yAxisID: 'macd'
+          },
+          {
+            label: 'Signal',
+            data: macdData.signal,
+            borderColor: 'rgba(255, 99, 132, 1)',
+            yAxisID: 'macd'
+          }
+        );
+      }
 
       if (state.priceChart) {
         state.priceChart.destroy();
       }
 
+      const scales = {
+        x: {
+          type: 'category',
+          grid: { display: true }
+        },
+        y: {
+          position: 'right',
+          grid: { display: true }
+        }
+      };
+
+      if (state.indicators.rsi) {
+        scales.rsi = {
+          position: 'right',
+          min: 0,
+          max: 100,
+          grid: { display: true }
+        };
+      }
+
+      if (state.indicators.macd) {
+        scales.macd = {
+          position: 'right',
+          grid: { display: true }
+        };
+      }
+
       state.priceChart = new Chart(elements.ctx, {
         type: 'line',
-        data: {
-          labels: labels,
-          datasets: [
-            {
-              label: '시가',
-              data: openPrices,
-              borderColor: 'rgba(75, 192, 192, 1)',
-              tension: 0.1
-            },
-            {
-              label: '고가',
-              data: highPrices,
-              borderColor: 'rgba(255, 99, 132, 1)',
-              tension: 0.1
-            },
-            {
-              label: '저가',
-              data: lowPrices,
-              borderColor: 'rgba(54, 162, 235, 1)',
-              tension: 0.1
-            },
-            {
-              label: '종가',
-              data: closePrices,
-              borderColor: 'rgba(255, 206, 86, 1)',
-              tension: 0.1
-            }
-          ]
-        },
+        data: { labels, datasets },
         options: {
           responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            x: {
-              grid: {
-                display: true
-              },
-              ticks: {
-                autoSkip: false,
-                maxRotation: 45,
-                minRotation: 45,
-                align: 'end'
-              },
-              min: labels.length - 30,
-              max: labels.length - 1,
-              pan: {
-                enabled: true,
-                mode: 'x'
-              },
-              zoom: {
-                enabled: true,
-                mode: 'x'
-              }
-            },
-            y: {
-              position: 'right',
-              grid: {
-                display: true
-              }
-            }
+          interaction: {
+            intersect: false,
+            mode: 'index'
           },
           plugins: {
+            tooltip: {
+              enabled: true,
+              mode: 'index',
+              intersect: false
+            },
             zoom: {
-              pan: {
-                enabled: true,
-                mode: 'x'
-              },
               zoom: {
-                wheel: {
-                  enabled: true
-                },
-                pinch: {
-                  enabled: true
-                },
-                mode: 'x'
-              }
-            },
-            legend: {
-              position: 'top',
-            },
-            title: {
-              display: true,
-              text: title
+                wheel: { enabled: true },
+                pinch: { enabled: true },
+                mode: 'xy'
+              },
+              pan: { enabled: true }
             }
-          }
+          },
+           scales
+        }
+      });
+
+      if (state.priceChart) {
+        state.priceChart.destroy();
+      }
+    
+      state.priceChart = new Chart(elements.ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          // 기존 옵션 유지
         }
       });
     }
@@ -375,7 +470,11 @@ document.addEventListener("DOMContentLoaded", () => {
             // 클릭 이벤트 추가
             listItem.querySelector('.crypto-item').addEventListener('click', (e) => {
                 if (!e.target.classList.contains('favorite-btn') && !e.target.classList.contains('alert-btn')) {
-                    fetchCryptoHistory(crypto.market, crypto.koreanName);
+                  console.log('차트 데이터 요청:', crypto.market, crypto.koreanName); // 디버깅용
+                  elements.chartSection.style.display = 'block';
+                  elements.cryptoInfoSection.style.display = 'none';
+                  document.getElementById('news-section').style.display = 'none';
+                  fetchCryptoHistory(crypto.market, crypto.koreanName);
                 }
             });
 
@@ -402,6 +501,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function fetchCryptoHistory(market, koreanName) {
+      state.currentMarket = market;
+      state.currentName = koreanName;
       elements.dayCandleBtn.classList.remove('active');
       elements.minuteCandleBtn.classList.remove('active');
       elements.weekCandleBtn.classList.remove('active');
@@ -535,18 +636,23 @@ document.addEventListener("DOMContentLoaded", () => {
       const uniqueTitles = new Set(); // Set to track unique titles
 
       newsData.forEach(article => {
+        if (uniqueTitles.has(article.title)) {
+            return; // Skip if the title is already in the set
+        }
+        uniqueTitles.add(article.title); // Add the title to the set
+
         const newsItem = document.createElement('div');
         newsItem.classList.add('news-card');
         newsItem.innerHTML = `
-          <img src="${article.imageurl}" alt="${article.title}" class="news-image">
-          <div class="news-content">
-            <h3>${article.title}</h3>
-            <p>${article.body}</p>
-            <a href="${article.url}" target="_blank">Read more</a>
-          </div>
+            <img src="${article.imageurl}" alt="${article.title}" class="news-image">
+            <div class="news-content">
+                <h3>${article.title}</h3>
+                <p>${article.body}</p>
+                <a href="${article.url}" target="_blank">Read more</a>
+            </div>
         `;
         newsList.appendChild(newsItem);
-      });
+    });
     }
 
     document.querySelector('.nav-menu a[href="#news-section"]').addEventListener('click', (event) => {
@@ -715,4 +821,105 @@ document.addEventListener("DOMContentLoaded", () => {
             alertModal.style.display = 'none'; // 모달 닫기
         }
     });
+
+    // 기술적 지표 계산 함수들
+    function calculateMA(prices, period) {
+      const ma = [];
+      for (let i = 0; i < prices.length; i++) {
+        if (i < period - 1) {
+          ma.push(null);
+          continue;
+        }
+        const sum = prices.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
+        ma.push(sum / period);
+      }
+      return ma;
+    }
+
+    function calculateRSI(prices, period = 14) {
+      const changes = prices.map((price, i) => 
+        i === 0 ? 0 : price - prices[i - 1]
+      );
+      
+      let gains = changes.map(change => change > 0 ? change : 0);
+      let losses = changes.map(change => change < 0 ? -change : 0);
+      
+      const rsi = [];
+      let avgGain = gains.slice(0, period).reduce((a, b) => a + b) / period;
+      let avgLoss = losses.slice(0, period).reduce((a, b) => a + b) / period;
+      
+      for (let i = period; i < prices.length; i++) {
+        const rs = avgGain / avgLoss;
+        rsi.push(100 - (100 / (1 + rs)));
+        
+        avgGain = (avgGain * (period - 1) + gains[i]) / period;
+        avgLoss = (avgLoss * (period - 1) + losses[i]) / period;
+      }
+      
+      return Array(period).fill(null).concat(rsi);
+    }
+
+    function calculateMACD(prices) {
+      const ema12 = calculateEMA(prices, 12);
+      const ema26 = calculateEMA(prices, 26);
+      const macd = ema12.map((v, i) => v - ema26[i]);
+      const signal = calculateEMA(macd, 9);
+      
+      return {
+        macd,
+        signal,
+        histogram: macd.map((v, i) => v - signal[i])
+      };
+    }
+
+    function calculateEMA(prices, period) {
+      const k = 2 / (period + 1);
+      const ema = [prices[0]];
+      
+      for (let i = 1; i < prices.length; i++) {
+        ema.push(prices[i] * k + ema[i - 1] * (1 - k));
+      }
+      
+      return ema;
+    }
+
+    // 지표 버튼 이벤트 리스너 추가
+    document.getElementById('ma-btn').addEventListener('click', () => {
+      state.indicators.ma = !state.indicators.ma;
+      document.getElementById('ma-btn').classList.toggle('active');
+      if (state.currentCandleData) {
+        updatePriceChart(state.currentCandleData, state.currentTitle, state.currentUnit);
+      }
+    });
+
+    document.getElementById('rsi-btn').addEventListener('click', () => {
+      state.indicators.rsi = !state.indicators.rsi;
+      document.getElementById('rsi-btn').classList.toggle('active');
+      if (state.currentCandleData) {
+        updatePriceChart(state.currentCandleData, state.currentTitle, state.currentUnit);
+      }
+    });
+
+    document.getElementById('macd-btn').addEventListener('click', () => {
+      state.indicators.macd = !state.indicators.macd;
+      document.getElementById('macd-btn').classList.toggle('active');
+      if (state.currentCandleData) {
+        updatePriceChart(state.currentCandleData, state.currentTitle, state.currentUnit);
+      }
+    });
+
+    // 가격 지표 버튼 이벤트 리스너
+    elements.openPriceBtn.addEventListener('click', () => togglePriceIndicator('open'));
+    elements.highPriceBtn.addEventListener('click', () => togglePriceIndicator('high'));
+    elements.lowPriceBtn.addEventListener('click', () => togglePriceIndicator('low'));
+
+    function togglePriceIndicator(type) {
+      state.priceIndicators[type] = !state.priceIndicators[type];
+      document.getElementById(`${type}-price-btn`).classList.toggle('active');
+      
+      // 현재 차트 데이터로 차트 다시 그리기
+      if (state.currentMarket && state.currentName) {
+        fetchCandleData(state.currentMarket, null, state.currentName);
+      }
+    }
 });

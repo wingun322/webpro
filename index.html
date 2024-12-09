@@ -8,6 +8,10 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="script.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
 </head>
 
 <body>
@@ -63,6 +67,25 @@
     <div class="chart-container">
       <div class="chart-wrapper">
         <canvas id="priceChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-indicators">
+      <div class="indicator-group">
+        <button id="open-price-btn" class="indicator-btn active">시가</button>
+        <button id="high-price-btn" class="indicator-btn active">고가</button>
+        <button id="low-price-btn" class="indicator-btn active">저가</button>
+      </div>
+      <div class="indicator-group">
+        <button id="ma-btn" class="indicator-btn">이동평균선</button>
+        <span class="info-icon" data-tooltip="이동평균선(MA)은 일정 기간 동안의 평균 가격을 보여주는 지표입니다. 단기, 중기, 장기 추세를 파악하는데 도움을 줍니다.">ⓘ</span>
+      </div>
+      <div class="indicator-group">
+        <button id="rsi-btn" class="indicator-btn">RSI</button>
+        <span class="info-icon" data-tooltip="RSI(상대강도지수)는 가격의 상승압력과 하락압력을 비교하여 과매수/과매도 구간을 판단하는 지표입니다. 0-100 사이의 값을 가지며, 일반적으로 70 이상은 과매수, 30 이하는 과매도로 해석합니다.">ⓘ</span>
+      </div>
+      <div class="indicator-group">
+        <button id="macd-btn" class="indicator-btn">MACD</button>
+        <span class="info-icon" data-tooltip="MACD(이동평균수렴확산지수)는 단기와 장기 이동평균선의 차이를 이용한 지표입니다. 추세의 방향과 강도, 모멘텀을 분석하는데 사용됩니다.">ⓘ</span>
       </div>
     </div>
   </section>
